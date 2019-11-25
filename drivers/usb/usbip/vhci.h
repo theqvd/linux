@@ -88,7 +88,14 @@ enum hub_speed {
 #define VHCI_NR_HCS 1
 #endif
 
-#define MAX_STATUS_NAME 16
+struct vhci_attrs {
+	struct dev_ext_attribute dev_attr_status;
+	struct dev_ext_attribute dev_attr_attach;
+	struct dev_ext_attribute dev_attr_detach;
+	struct dev_ext_attribute dev_attr_nports;
+
+	struct attribute_group attribute_group;
+};
 
 struct vhci {
 	spinlock_t lock;
@@ -97,6 +104,8 @@ struct vhci {
 
 	struct vhci_hcd *vhci_hcd_hs;
 	struct vhci_hcd *vhci_hcd_ss;
+
+	struct vhci_attrs *attrs;
 };
 
 /* for usb_hcd.hcd_priv[0] */
@@ -126,8 +135,8 @@ extern struct attribute_group vhci_attr_group;
 void rh_port_connect(struct vhci_device *vdev, enum usb_device_speed speed);
 
 /* vhci_sysfs.c */
-int vhci_init_attr_group(void);
-void vhci_finish_attr_group(void);
+int vhci_init_attr_group(struct vhci_hcd *vhci_hcd, int id);
+void vhci_finish_attr_group(struct vhci_hcd *vhci_hcd);
 
 /* vhci_rx.c */
 struct urb *pickup_urb_and_free_priv(struct vhci_device *vdev, __u32 seqnum);
@@ -169,6 +178,12 @@ static inline struct usb_hcd *vhci_hcd_to_hcd(struct vhci_hcd *vhci_hcd)
 static inline struct vhci_hcd *vdev_to_vhci_hcd(struct vhci_device *vdev)
 {
 	return container_of((void *)(vdev - vdev->rhport), struct vhci_hcd, vdev);
+}
+
+static inline struct vhci *device_attribute_to_vhci(
+	struct device_attribute *attr)
+{
+	return (struct vhci *)((struct dev_ext_attribute *)attr)->var;
 }
 
 #endif /* __USBIP_VHCI_H */

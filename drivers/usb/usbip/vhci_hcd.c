@@ -1159,13 +1159,14 @@ static int vhci_setup(struct usb_hcd *hcd)
 static int vhci_start(struct usb_hcd *hcd)
 {
 	struct vhci_hcd *vhci_hcd = hcd_to_vhci_hcd(hcd);
+	struct vhci *vhci = vhci_hcd->vhci;
 	int id, rhport;
 	int err;
 
-	usbip_dbg_vhci_hc("enter vhci_start\n");
+	usbip_dbg_vhci_hc("enter vhci_start for %s\n", hcd_name(hcd));
 
 	if (usb_hcd_is_primary_hcd(hcd))
-		spin_lock_init(&vhci_hcd->vhci->lock);
+		spin_lock_init(&vhci->lock);
 
 	/* initialize private data of usb_hcd */
 
@@ -1192,16 +1193,17 @@ static int vhci_start(struct usb_hcd *hcd)
 	}
 
 	/* vhci_hcd is now ready to be controlled through sysfs */
-	if (id == 0 && usb_hcd_is_primary_hcd(hcd)) {
-		err = vhci_init_attr_group();
+	if (usb_hcd_is_primary_hcd(hcd)) {
+		err = vhci_init_attr_group(vhci_hcd, id);
 		if (err) {
 			dev_err(hcd_dev(hcd), "init attr group failed, err = %d\n", err);
 			return err;
 		}
-		err = sysfs_create_group(&hcd_dev(hcd)->kobj, &vhci_attr_group);
+		err = sysfs_create_group(&hcd_dev(hcd)->kobj,
+					 &vhci->attrs->attribute_group);
 		if (err) {
 			dev_err(hcd_dev(hcd), "create sysfs files failed, err = %d\n", err);
-			vhci_finish_attr_group();
+			vhci_finish_attr_group(vhci_hcd);
 			return err;
 		}
 		pr_info("created sysfs %s\n", hcd_name(hcd));
@@ -1213,15 +1215,16 @@ static int vhci_start(struct usb_hcd *hcd)
 static void vhci_stop(struct usb_hcd *hcd)
 {
 	struct vhci_hcd *vhci_hcd = hcd_to_vhci_hcd(hcd);
-	int id, rhport;
+	struct vhci *vhci = vhci_hcd->vhci;
+	int rhport;
 
 	usbip_dbg_vhci_hc("stop VHCI controller\n");
 
 	/* 1. remove the userland interface of vhci_hcd */
-	id = hcd_name_to_id(hcd_name(hcd));
-	if (id == 0 && usb_hcd_is_primary_hcd(hcd)) {
-		sysfs_remove_group(&hcd_dev(hcd)->kobj, &vhci_attr_group);
-		vhci_finish_attr_group();
+	if (usb_hcd_is_primary_hcd(hcd)) {
+		sysfs_remove_group(&hcd_dev(hcd)->kobj,
+				   &vhci->attrs->attribute_group);
+		vhci_finish_attr_group(vhci_hcd);
 	}
 
 	/* 2. shutdown all the ports of vhci_hcd */
