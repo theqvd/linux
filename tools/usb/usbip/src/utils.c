@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 
 #include "usbip_common.h"
 #include "utils.h"
@@ -39,5 +41,19 @@ int modify_match_busid(char *busid, int add)
 		return -1;
 	}
 
+	return 0;
+}
+
+int atoi_with_check(const char *str, int *pi)
+{
+	ssize_t len = strlen(str);
+
+	for (ssize_t i = 0; i < len; i++) {
+		if (!isdigit(str[i])) {
+			err("%s is not a number", str);
+			return -1;
+		}
+	}
+	*pi = atoi(str);
 	return 0;
 }

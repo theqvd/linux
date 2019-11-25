@@ -8,6 +8,7 @@
 #define __UTILS_H
 
 int modify_match_busid(char *busid, int add);
+int atoi_with_check(const char *str, int *pi);
 
 #endif /* __UTILS_H */
 

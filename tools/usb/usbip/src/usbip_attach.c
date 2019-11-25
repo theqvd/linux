@@ -23,6 +23,7 @@
 #include "usbip_common.h"
 #include "usbip_network.h"
 #include "usbip.h"
+#include "usbip_enumerate.h"
 
 static const char usbip_attach_usage_string[] =
 	"usbip attach <args>\n"
@@ -36,7 +37,8 @@ void usbip_attach_usage(void)
 }
 
 #define MAX_BUFF 100
-static int record_connection(char *host, char *port, char *busid, int rhport)
+static int record_connection(char *host, char *port,
+			     char *busid, int vhci_ix, int rhport)
 {
 	int fd;
 	char path[PATH_MAX+1];
@@ -58,7 +60,7 @@ static int record_connection(char *host, char *port, char *busid, int rhport)
 			return -1;
 	}
 
-	snprintf(path, PATH_MAX, VHCI_STATE_PATH"/port%d", rhport);
+	snprintf(path, PATH_MAX, VHCI_STATE_PATH"/port%d-%d", vhci_ix, rhport);
 
 	fd = open(path, O_WRONLY|O_CREAT|O_TRUNC, S_IRWXU);
 	if (fd < 0)
@@ -78,46 +80,78 @@ static int record_connection(char *host, char *port, char *busid, int rhport)
 	return 0;
 }
 
-static int import_device(int sockfd, struct usbip_usb_device *udev)
+static int import_device(int sockfd, struct usbip_usb_device *udev,
+			 int *pvhci_ix, int *pport)
 {
-	int rc;
-	int port;
 	uint32_t speed = udev->speed;
+	int rc = -1;
 
-	rc = usbip_vhci_driver_open();
-	if (rc < 0) {
-		err("open vhci_driver");
-		goto err_out;
+	struct udev_enumerate *enumerate;
+	struct udev_list_entry *list, *entry;
+
+	enumerate = vhci_enumerate();
+	if (!enumerate) {
+		err("unable to list vhci_hcd drivers");
+		return -1;
 	}
 
-	do {
-		port = usbip_vhci_get_free_port(speed);
-		if (port < 0) {
-			err("no free port");
-			goto err_driver_close;
+	list = udev_enumerate_get_list_entry(enumerate);
+	if (!list) {
+		err("unable to list vhci_hcd drivers");
+		return -1;
+	}
+
+	udev_list_entry_foreach(entry, list) {
+		const char *path = udev_list_entry_get_name(entry);
+		int port, vhci_ix;
+
+		if (usbip_vhci_driver_open_path(path) < 0)
+			continue;
+
+		vhci_ix = usbip_vhci_driver_ix();
+
+		/* Between the moment we read and parse the status
+		 * files and the one we try to attach a socket to the
+		 * port, the later one may become occupied from some
+		 * other process. In order to avoid that race
+		 * condition, we retry on EBUSY errors. On any other
+		 * error we just jump to the next vhci_hcd device
+		 */
+		while (1) {
+			port = usbip_vhci_get_free_port(speed);
+			if (port < 0)
+				break;
+
+			dbg("got free port %d at %s", port, path);
+			rc = usbip_vhci_attach_device(port, sockfd,
+						      udev->busnum,
+						      udev->devnum,
+						      speed);
+
+			if (rc >= 0 || errno != EBUSY)
+				break;
+
+			usbip_vhci_refresh_device_list();
 		}
 
-		dbg("got free port %d", port);
+		usbip_vhci_driver_close();
 
-		rc = usbip_vhci_attach_device(port, sockfd, udev->busnum,
-					      udev->devnum, udev->speed);
-		if (rc < 0 && errno != EBUSY) {
-			err("import device");
-			goto err_driver_close;
+		if (rc >= 0) {
+			*pport = port;
+			*pvhci_ix = vhci_ix;
+			goto done;
 		}
-	} while (rc < 0);
+	}
+	err("import device failed");
 
-	usbip_vhci_driver_close();
+done:
+	udev_enumerate_unref(enumerate);
 
-	return port;
-
-err_driver_close:
-	usbip_vhci_driver_close();
-err_out:
-	return -1;
+	return rc;
 }
 
-static int query_import_device(int sockfd, char *busid)
+static int query_import_device(int sockfd, char *busid,
+			       int *pvhci_ix, int *pport)
 {
 	int rc;
 	struct op_import_request request;
@@ -168,7 +202,7 @@ static int query_import_device(int sockfd, char *busid)
 	}
 
 	/* import a device */
-	return import_device(sockfd, &reply.udev);
+	return import_device(sockfd, &reply.udev, pvhci_ix, pport);
 }
 
 static int attach_device(char *host, char *busid)
@@ -176,6 +210,7 @@ static int attach_device(char *host, char *busid)
 	int sockfd;
 	int rc;
 	int rhport;
+	int vhci_ix;
 
 	sockfd = usbip_net_tcp_connect(host, usbip_port_string);
 	if (sockfd < 0) {
@@ -183,13 +218,13 @@ static int attach_device(char *host, char *busid)
 		return -1;
 	}
 
-	rhport = query_import_device(sockfd, busid);
-	if (rhport < 0)
+	rc = query_import_device(sockfd, busid, &vhci_ix, &rhport);
+	if (rc < 0)
 		return -1;
 
 	close(sockfd);
 
-	rc = record_connection(host, usbip_port_string, busid, rhport);
+	rc = record_connection(host, usbip_port_string, busid, vhci_ix, rhport);
 	if (rc < 0) {
 		err("record connection");
 		return -1;
