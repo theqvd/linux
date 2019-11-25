@@ -79,6 +79,15 @@ config USB
 	  To compile this driver as a module, choose M here: the
 	  module will be called usbcore.
 
+config USB_MAXBUS
+	int "Maximum number of USB host controllers"
+	range 1 4096
+	default 64
+	---help---
+	  This defines the number of USB host controllers that would be
+	  available, both physical and virtual (for instance, those
+	  used by USB/IP).
+
 config USB_PCI
 	bool "PCI based USB host interface"
 	depends on PCI

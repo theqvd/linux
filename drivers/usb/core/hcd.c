@@ -85,7 +85,7 @@ DEFINE_IDR (usb_bus_idr);
 EXPORT_SYMBOL_GPL (usb_bus_idr);
 
 /* used when allocating bus numbers */
-#define USB_MAXBUS		64
+#define USB_MAXBUS		CONFIG_USB_MAXBUS
 
 /* used when updating list of hcds */
 DEFINE_MUTEX(usb_bus_idr_lock);	/* exported only for usbfs */
