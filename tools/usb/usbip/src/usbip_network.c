@@ -50,39 +50,41 @@ void usbip_setup_port_number(char *arg)
 	info("using port %d (\"%s\")", usbip_port, usbip_port_string);
 }
 
-void usbip_net_pack_uint32_t(int pack, uint32_t *num)
+void usbip_net_pack_uint32_t(int pack, uint8_t *num)
 {
 	uint32_t i;
+	memcpy(&i, num, sizeof(i));
 
 	if (pack)
-		i = htonl(*num);
+		i = htonl(i);
 	else
-		i = ntohl(*num);
+		i = ntohl(i);
 
-	*num = i;
+	memcpy(num, &i, sizeof(i));
 }
 
-void usbip_net_pack_uint16_t(int pack, uint16_t *num)
+void usbip_net_pack_uint16_t(int pack, uint8_t *num)
 {
 	uint16_t i;
+	memcpy(&i, num, sizeof(i));
 
 	if (pack)
-		i = htons(*num);
+		i = htons(i);
 	else
-		i = ntohs(*num);
+		i = ntohs(i);
 
-	*num = i;
+	memcpy(num, &i, sizeof(i));
 }
 
 void usbip_net_pack_usb_device(int pack, struct usbip_usb_device *udev)
 {
-	usbip_net_pack_uint32_t(pack, &udev->busnum);
-	usbip_net_pack_uint32_t(pack, &udev->devnum);
-	usbip_net_pack_uint32_t(pack, &udev->speed);
+	usbip_net_pack_uint32_t(pack, (uint8_t*)&udev->busnum);
+	usbip_net_pack_uint32_t(pack, (uint8_t*)&udev->devnum);
+	usbip_net_pack_uint32_t(pack, (uint8_t*)&udev->speed);
 
-	usbip_net_pack_uint16_t(pack, &udev->idVendor);
-	usbip_net_pack_uint16_t(pack, &udev->idProduct);
-	usbip_net_pack_uint16_t(pack, &udev->bcdDevice);
+	usbip_net_pack_uint16_t(pack, (uint8_t*)&udev->idVendor);
+	usbip_net_pack_uint16_t(pack, (uint8_t*)&udev->idProduct);
+	usbip_net_pack_uint16_t(pack, (uint8_t*)&udev->bcdDevice);
 }
 
 void usbip_net_pack_usb_interface(int pack __attribute__((unused)),
